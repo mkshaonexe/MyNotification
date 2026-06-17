@@ -1,0 +1,38 @@
+# Built artifacts
+bin/
+gen/
+out/
+build/
+.gradle/
+app/build/
+
+# OS-specific
+.DS_Store
+Thumbs.db
+*.DS_Store
+
+# IDEs and editors
+.idea/
+*.iml
+*.ipr
+*.iws
+.navigation/
+.cxx/
+.externalNativeBuild/
+
+# Local configuration file (sdk path, etc)
+local.properties
+/local.properties
+
+# Log files
+*.log
+
+# Android Studio captures
+captures/
+
+# Keystore files
+*.jks
+*.keystore
+
+# Google Services Keys
+google-services.json
