@@ -32,7 +32,8 @@ import com.my.notificationai.ui.MainViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppListScreen(
-    viewModel: MainViewModel
+    viewModel: MainViewModel,
+    innerPadding: PaddingValues
 ) {
     val appsList by viewModel.appsList.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
@@ -40,6 +41,7 @@ fun AppListScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .padding(innerPadding)
             .background(Color(0xFFF8F9FA))
     ) {
         // Search Bar

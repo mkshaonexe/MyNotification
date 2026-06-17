@@ -36,7 +36,8 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultScreen(
-    viewModel: MainViewModel
+    viewModel: MainViewModel,
+    innerPadding: PaddingValues
 ) {
     val context = LocalContext.current
     val notifications by viewModel.savedNotifications.collectAsState()
@@ -69,6 +70,7 @@ fun VaultScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .padding(innerPadding)
             .background(Color(0xFFF8F9FA))
     ) {
         if (notifications.isEmpty()) {

@@ -108,13 +108,12 @@ class MainActivity : ComponentActivity() {
                         NavHost(
                             navController    = navController,
                             startDestination = Screen.Dashboard.route,
-                            modifier         = Modifier
-                                .fillMaxSize()
-                                .padding(innerPadding)
+                            modifier         = Modifier.fillMaxSize()
                         ) {
                             composable(Screen.Dashboard.route) {
                                 DashboardScreen(
                                     viewModel         = viewModel,
+                                    innerPadding      = innerPadding,
                                     onNavigateToApps  = { navController.navigate(Screen.AppList.route) },
                                     onNavigateToVault = { navController.navigate(Screen.Vault.route) }
                                 )
@@ -122,25 +121,29 @@ class MainActivity : ComponentActivity() {
 
                             composable(Screen.AppList.route) {
                                 AppListScreen(
-                                    viewModel = viewModel
+                                    viewModel    = viewModel,
+                                    innerPadding = innerPadding
                                 )
                             }
 
                             composable(Screen.Vault.route) {
                                 VaultScreen(
-                                    viewModel = viewModel
+                                    viewModel    = viewModel,
+                                    innerPadding = innerPadding
                                 )
                             }
 
                             composable(Screen.Settings.route) {
                                 SettingsScreen(
-                                    viewModel = viewModel
+                                    viewModel    = viewModel,
+                                    innerPadding = innerPadding
                                 )
                             }
 
                             composable(Screen.Profile.route) {
                                 ProfileScreen(
-                                    viewModel = viewModel
+                                    viewModel    = viewModel,
+                                    innerPadding = innerPadding
                                 )
                             }
                         }

@@ -23,7 +23,8 @@ import kotlinx.coroutines.delay
 
 @Composable
 fun SettingsScreen(
-    viewModel: MainViewModel
+    viewModel: MainViewModel,
+    innerPadding: PaddingValues
 ) {
     val context = LocalContext.current
     val themePref by viewModel.themePreference.collectAsState()
@@ -39,6 +40,7 @@ fun SettingsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .padding(innerPadding)
             .background(Color(0xFFF8F9FA))
             .padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
