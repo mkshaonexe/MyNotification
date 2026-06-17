@@ -36,8 +36,7 @@ import java.util.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VaultScreen(
-    viewModel: MainViewModel,
-    onBack: () -> Unit
+    viewModel: MainViewModel
 ) {
     val context = LocalContext.current
     val notifications by viewModel.savedNotifications.collectAsState()
@@ -67,58 +66,33 @@ fun VaultScreen(
         )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Secure Vault Inbox", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    if (notifications.isNotEmpty()) {
-                        IconButton(onClick = { showDeleteAllDialog = true }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Clear All", tint = Color(0xFFEF4444))
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFF8F9FA))
+    ) {
+        if (notifications.isEmpty()) {
+            EmptyVaultState()
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(top = 10.dp, bottom = 20.dp)
+            ) {
+                items(notifications, key = { it.id }) { notification ->
+                    NotificationItem(
+                        notification = notification,
+                        onMarkRead = { viewModel.markNotificationAsRead(notification) },
+                        onDelete = { viewModel.deleteNotification(notification) },
+                        onCopyText = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newPlainText("Notification Content", "${notification.title}\n${notification.body}")
+                            clipboard.setPrimaryClip(clip)
+                            Toast.makeText(context, "Copied content to clipboard", Toast.LENGTH_SHORT).show()
                         }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFFF8F9FA)
-                )
-            )
-        },
-        containerColor = Color(0xFFF8F9FA)
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .background(Color(0xFFF8F9FA))
-        ) {
-            if (notifications.isEmpty()) {
-                EmptyVaultState()
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(top = 10.dp, bottom = 20.dp)
-                ) {
-                    items(notifications, key = { it.id }) { notification ->
-                        NotificationItem(
-                            notification = notification,
-                            onMarkRead = { viewModel.markNotificationAsRead(notification) },
-                            onDelete = { viewModel.deleteNotification(notification) },
-                            onCopyText = {
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                val clip = ClipData.newPlainText("Notification Content", "${notification.title}\n${notification.body}")
-                                clipboard.setPrimaryClip(clip)
-                                Toast.makeText(context, "Copied content to clipboard", Toast.LENGTH_SHORT).show()
-                            }
-                        )
-                    }
+                    )
                 }
             }
         }

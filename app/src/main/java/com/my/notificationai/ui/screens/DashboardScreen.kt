@@ -29,7 +29,6 @@ import androidx.compose.ui.unit.sp
 import com.my.notificationai.ui.MainViewModel
 import kotlinx.coroutines.delay
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     viewModel: MainViewModel,
@@ -62,88 +61,70 @@ fun DashboardScreen(
         currentTime = System.currentTimeMillis()
     }
 
-    Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        "MyNotification",
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1F2937)
-                    )
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = Color(0xFFF8F9FA)
-                )
-            )
-        },
-        containerColor = Color(0xFFF8F9FA)
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 20.dp)
-                .background(Color(0xFFF8F9FA)),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // 1. Service Status Banner / Card
-            ServiceStatusCard(
-                isRunning = isServiceRunning,
-                onGrantPermission = {
-                    context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    })
-                }
-            )
-
-            // 2. Stats Block
-            StatsCard(
-                blockedToday = notifications.size,
-                unreadCount = notifications.count { !it.isRead },
-                onClickVault = onNavigateToVault
-            )
-
-            // 3. Master Block Toggle Card
-            MasterBlockCard(
-                isBlockAll = isBlockAll && !isPaused,
-                isPaused = isPaused,
-                onToggle = { viewModel.toggleBlockAll(!isBlockAll) }
-            )
-
-            // 4. Quick Pause Card
-            QuickPauseCard(
-                isPaused = isPaused,
-                quickPauseUntil = quickPauseUntil,
-                currentTime = currentTime,
-                onPause = { mins -> viewModel.enableQuickPause(mins) },
-                onCancel = { viewModel.cancelQuickPause() }
-            )
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            // Quick Shortcut Panel
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                ShortcutButton(
-                    text = "Manage Apps",
-                    icon = Icons.Default.List,
-                    color = Color(0xFF6366F1),
-                    modifier = Modifier.weight(1f),
-                    onClick = onNavigateToApps
-                )
-                ShortcutButton(
-                    text = "View Inbox",
-                    icon = Icons.Default.MailOutline,
-                    color = Color(0xFF10B981),
-                    modifier = Modifier.weight(1f),
-                    onClick = onNavigateToVault
-                )
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(innerPadding)
+            .background(Color(0xFFF8F9FA))
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // 1. Service Status Banner / Card
+        ServiceStatusCard(
+            isRunning = isServiceRunning,
+            onGrantPermission = {
+                context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
             }
+        )
+
+        // 2. Stats Block
+        StatsCard(
+            blockedToday = notifications.size,
+            unreadCount = notifications.count { !it.isRead },
+            onClickVault = onNavigateToVault
+        )
+
+        // 3. Master Block Toggle Card
+        MasterBlockCard(
+            isBlockAll = isBlockAll && !isPaused,
+            isPaused = isPaused,
+            onToggle = { viewModel.toggleBlockAll(!isBlockAll) }
+        )
+
+        // 4. Quick Pause Card
+        QuickPauseCard(
+            isPaused = isPaused,
+            quickPauseUntil = quickPauseUntil,
+            currentTime = currentTime,
+            onPause = { mins -> viewModel.enableQuickPause(mins) },
+            onCancel = { viewModel.cancelQuickPause() }
+        )
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        // Quick Shortcut Panel
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            ShortcutButton(
+                text = "Manage Apps",
+                icon = Icons.Default.List,
+                color = Color(0xFF6366F1),
+                modifier = Modifier.weight(1f),
+                onClick = onNavigateToApps
+            )
+            ShortcutButton(
+                text = "View Inbox",
+                icon = Icons.Default.MailOutline,
+                color = Color(0xFF10B981),
+                modifier = Modifier.weight(1f),
+                onClick = onNavigateToVault
+            )
         }
     }
 }
