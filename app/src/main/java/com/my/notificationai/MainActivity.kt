@@ -43,11 +43,11 @@ class MainActivity : ComponentActivity() {
             MyNotificationTheme(darkTheme = darkTheme) {
                 val navController = rememberNavController()
 
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                Scaffold(modifier = Modifier.fillMaxSize()) { _ ->
                     NavHost(
                         navController = navController,
                         startDestination = Screen.Dashboard.route,
-                        modifier = Modifier.padding(innerPadding)
+                        modifier = Modifier.fillMaxSize()
                     ) {
                         composable(Screen.Dashboard.route) {
                             DashboardScreen(

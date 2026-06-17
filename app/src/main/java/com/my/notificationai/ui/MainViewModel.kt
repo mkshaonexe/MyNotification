@@ -1,7 +1,6 @@
 package com.my.notificationai.ui
 
 import android.content.Context
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.provider.Settings
 import androidx.lifecycle.ViewModel
@@ -86,23 +85,15 @@ class MainViewModel @Inject constructor(
     fun loadInstalledApps() {
         viewModelScope.launch(Dispatchers.Default) {
             val pm = context.packageManager
-            val packages = pm.getInstalledPackages(0)
+            val packages = pm.getInstalledPackages(PackageManager.GET_META_DATA)
             val appList = packages.mapNotNull { packageInfo ->
                 val appInfo = packageInfo.applicationInfo ?: return@mapNotNull null
-                // Filter out system apps by default, except system dialer/messages
-                val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
-                if (isSystem) {
-                    val isDialerOrSms = packageInfo.packageName.contains("dialer") ||
-                            packageInfo.packageName.contains("messaging") ||
-                            packageInfo.packageName.contains("phone")
-                    if (!isDialerOrSms) return@mapNotNull null
-                }
                 // Skip our own app
                 if (packageInfo.packageName == context.packageName) return@mapNotNull null
 
                 val label = pm.getApplicationLabel(appInfo).toString()
                 label to packageInfo.packageName
-            }.sortedBy { it.first }
+            }.sortedBy { it.first.lowercase() }
             _rawInstalledApps.value = appList
         }
     }

@@ -1,5 +1,8 @@
 package com.my.notificationai.ui.screens
 
+import android.content.pm.ApplicationInfo
+import android.graphics.drawable.Drawable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -15,9 +18,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.drawable.toBitmap
 import com.my.notificationai.ui.AppItem
 import com.my.notificationai.ui.MainViewModel
 
@@ -112,17 +120,36 @@ fun AppListItem(
     app: AppItem,
     onToggleBlock: () -> Unit
 ) {
+    val context = LocalContext.current
+    val appIcon: Drawable? = remember(app.packageName) {
+        runCatching {
+            context.packageManager.getApplicationIcon(app.packageName)
+        }.getOrNull()
+    }
+    val isSystemApp = remember(app.packageName) {
+        runCatching {
+            val info = context.packageManager.getApplicationInfo(app.packageName, 0)
+            (info.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+        }.getOrDefault(false)
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, Color(0xFFE5E7EB), RoundedCornerShape(16.dp)),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+            .border(
+                width = 1.dp,
+                color = if (app.isBlocked) Color(0xFFEF4444).copy(alpha = 0.3f) else Color(0xFFE5E7EB),
+                shape = RoundedCornerShape(16.dp)
+            ),
+        colors = CardDefaults.cardColors(
+            containerColor = if (app.isBlocked) Color(0xFFFFF5F5) else Color.White
+        ),
         shape = RoundedCornerShape(16.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -132,54 +159,87 @@ fun AppListItem(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Circular Avatar Placeholder using App First Letter
+                // App Icon
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
-                        .background(Color(0xFFEEF2F6), RoundedCornerShape(12.dp)),
+                        .size(46.dp)
+                        .background(Color(0xFFEEF2F6), RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(12.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = app.appLabel.take(1).uppercase(),
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF6366F1),
-                        fontSize = 18.sp
-                    )
+                    if (appIcon != null) {
+                        val bitmap = remember(appIcon) {
+                            appIcon.toBitmap(96, 96)
+                        }
+                        Image(
+                            painter = BitmapPainter(bitmap.asImageBitmap()),
+                            contentDescription = app.appLabel,
+                            modifier = Modifier.size(36.dp),
+                            contentScale = ContentScale.Fit
+                        )
+                    } else {
+                        Text(
+                            text = app.appLabel.take(1).uppercase(),
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF6366F1),
+                            fontSize = 18.sp
+                        )
+                    }
                 }
 
-                Column {
-                    Text(
-                        text = app.appLabel,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF1F2937),
-                        fontSize = 16.sp
-                    )
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = app.appLabel,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1F2937),
+                            fontSize = 15.sp,
+                            maxLines = 1
+                        )
+                        if (isSystemApp) {
+                            Box(
+                                modifier = Modifier
+                                    .background(Color(0xFFEDE9FE), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "SYS",
+                                    color = Color(0xFF7C3AED),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 9.sp
+                                )
+                            }
+                        }
+                    }
                     Text(
                         text = app.packageName,
                         color = Color(0xFF9CA3AF),
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         maxLines = 1
                     )
                 }
             }
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 // Intercepted Badge
                 if (app.notificationCount > 0) {
                     Box(
                         modifier = Modifier
                             .background(Color(0xFFEEF2F6), RoundedCornerShape(6.dp))
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                            .padding(horizontal = 7.dp, vertical = 3.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = "${app.notificationCount} blocked",
                             color = Color(0xFF4B5563),
                             fontWeight = FontWeight.SemiBold,
-                            fontSize = 11.sp
+                            fontSize = 10.sp
                         )
                     }
                 }
@@ -190,7 +250,7 @@ fun AppListItem(
                     onCheckedChange = { onToggleBlock() },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = Color.White,
-                        checkedTrackColor = Color(0xFFEF4444), // Red for blocked
+                        checkedTrackColor = Color(0xFFEF4444),
                         uncheckedThumbColor = Color(0xFF9CA3AF),
                         uncheckedTrackColor = Color(0xFFE5E7EB)
                     )
