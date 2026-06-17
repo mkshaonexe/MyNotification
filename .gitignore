@@ -36,3 +36,7 @@ captures/
 
 # Google Services Keys
 google-services.json
+
+# Agent skills
+.agents/
+skills/
