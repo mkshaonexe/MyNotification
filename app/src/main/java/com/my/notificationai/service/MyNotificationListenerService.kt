@@ -1,16 +1,14 @@
 package com.my.notificationai.service
 
-import android.content.Intent
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
-import com.my.notificationai.data.AppRepository
-import com.my.notificationai.data.SavedNotification
+import com.my.notificationai.core.domain.engine.NotificationDeduplicationEngine
+import com.my.notificationai.core.domain.engine.NotificationRuleEngine
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -18,7 +16,10 @@ import javax.inject.Inject
 class MyNotificationListenerService : NotificationListenerService() {
 
     @Inject
-    lateinit var repository: AppRepository
+    lateinit var ruleEngine: NotificationRuleEngine
+
+    @Inject
+    lateinit var deduplicationEngine: NotificationDeduplicationEngine
 
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
@@ -37,6 +38,7 @@ class MyNotificationListenerService : NotificationListenerService() {
     override fun onDestroy() {
         super.onDestroy()
         isServiceRunning = false
+        deduplicationEngine.clearActiveKeys()
         serviceJob.cancel()
         Log.d(TAG, "Service Destroyed")
     }
@@ -58,53 +60,15 @@ class MyNotificationListenerService : NotificationListenerService() {
         if (sbn == null) return
 
         val packageName = sbn.packageName
-        val notification = sbn.notification
-        val extras = notification?.extras
-        val title = extras?.getCharSequence("android.title")?.toString() ?: ""
-        val text = extras?.getCharSequence("android.text")?.toString() ?: ""
-        val channelId = sbn.notification?.channelId ?: ""
 
-        // Skip our own notifications to avoid recursion
+        // Skip our own app notifications to avoid recursion
         if (packageName == applicationContext.packageName) {
             return
         }
 
         serviceScope.launch {
-            val isBlockAll = repository.isBlockAllEnabled.first()
-            val quickPauseUntil = repository.quickPauseUntil.first()
-            val now = System.currentTimeMillis()
-
-            // Check if Quick Pause is active
-            if (now < quickPauseUntil) {
-                Log.d(TAG, "Quick pause active. Skipping interception.")
-                return@launch
-            }
-
-            // Check Smart Whitelist:
-            // Auto-detect and protect: Phone calls, SMS/OTP, Alarms
-            val isCall = packageName.contains("dialer") || packageName.contains("telephony") || packageName.contains("phone")
-            val isSms = packageName.contains("messaging") || packageName.contains("sms") || packageName.contains("mms")
-            val isAlarm = packageName.contains("clock") || packageName.contains("alarm")
-            
-            // Checking if notification is a call by checking category
-            val isCallCategory = notification?.category == android.app.Notification.CATEGORY_CALL || notification?.category == android.app.Notification.CATEGORY_ALARM
-
-            if (isCall || isSms || isAlarm || isCallCategory) {
-                // Auto Whitelisted - do not block
-                Log.d(TAG, "Whitelisted app $packageName. Allowing notification.")
-                return@launch
-            }
-
-            // Check if we should block this app
-            val blockedApp = repository.getBlockedApp(packageName)
-            val shouldBlock = isBlockAll || (blockedApp != null && blockedApp.isBlocked)
-
-            if (shouldBlock) {
-                // Intercept and dismiss notification
-                cancelNotification(sbn.key)
-                Log.d(TAG, "Blocked notification from $packageName")
-
-                // Fetch app name (label)
+            try {
+                // Fetch user-facing app label
                 val appLabel = try {
                     val pm = packageManager
                     val ai = pm.getApplicationInfo(packageName, 0)
@@ -113,36 +77,42 @@ class MyNotificationListenerService : NotificationListenerService() {
                     packageName
                 }
 
-                // Check if OTP
-                val isOtp = detectOtp(title, text)
-                val otpCode = if (isOtp) extractOtp(text) else null
+                // Deterministic rule evaluation
+                val ruleResult = ruleEngine.evaluate(sbn)
 
-                // Save to Room Database
-                val savedNotification = SavedNotification(
-                    packageName = packageName,
-                    appLabel = appLabel,
-                    title = title,
-                    body = text,
-                    channelId = channelId,
-                    category = if (isOtp) "OTP" else "Normal",
-                    isOtp = isOtp,
-                    otpCode = otpCode,
-                    receivedAt = now
-                )
-                repository.insertNotification(savedNotification)
+                // UNCONDITIONAL CAPTURE: Always persist to database through deduplication engine
+                deduplicationEngine.processPostedNotification(sbn, appLabel, ruleResult)
+
+                // If rule dictates blocking, suppress notification from tray
+                if (ruleResult.shouldBlock) {
+                    try {
+                        cancelNotification(sbn.key)
+                        Log.d(TAG, "Blocked and cancelled notification from $packageName [${ruleResult.reason}]")
+                    } catch (e: SecurityException) {
+                        Log.w(TAG, "System prevented cancellation of notification from $packageName", e)
+                    }
+                } else {
+                    Log.d(TAG, "Allowed notification from $packageName [${ruleResult.reason}]")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error processing incoming notification", e)
             }
         }
     }
 
-    private fun detectOtp(title: String, body: String): Boolean {
-        val otpPattern = "\\b\\d{4,8}\\b".toRegex()
-        val textToSearch = "$title $body".lowercase()
-        val hasOtpKeyword = textToSearch.contains("otp") || textToSearch.contains("code") || textToSearch.contains("verification") || textToSearch.contains("verify")
-        return hasOtpKeyword && otpPattern.containsMatchIn("$title $body")
-    }
+    override fun onNotificationRemoved(sbn: StatusBarNotification?, rankingMap: RankingMap?, reason: Int) {
+        super.onNotificationRemoved(sbn, rankingMap, reason)
+        if (sbn == null) return
 
-    private fun extractOtp(body: String): String? {
-        val otpPattern = "\\b\\d{4,8}\\b".toRegex()
-        return otpPattern.find(body)?.value
+        serviceScope.launch {
+            try {
+                val duration = deduplicationEngine.processRemovedNotification(sbn.key)
+                if (duration != null) {
+                    Log.d(TAG, "Notification ${sbn.key} removed after ${duration}ms (reason: $reason)")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling notification removal", e)
+            }
+        }
     }
 }
