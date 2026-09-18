@@ -401,19 +401,19 @@ Cleanup     Data Layer  Listener    Rule Engine Design Sys  Primary UI  Subscree
 ### Phase 0: Legacy Cleanup & Foundation Architecture
 **Goal:** Strip out deprecated code, delete unauthorized screens, establish clean architecture packages, and prepare project dependencies.
 
-- [ ] **Task 0.1: Remove Deprecated UI & Unused Artifacts**
+- [x] **Task 0.1: Remove Deprecated UI & Unused Artifacts**
   - Delete `app/src/main/java/com/my/notificationai/ui/screens/VaultScreen.kt` (non-specified "vault" concept).
   - Delete `app/src/main/java/com/my/notificationai/ui/screens/ProfileScreen.kt` (non-specified profile screen).
   - Delete `app/src/main/java/com/my/notificationai/ui/components/AppDrawerContent.kt` (drawer navigation forbidden by spec).
   - Remove unused routes from `Screen.kt`.
-- [ ] **Task 0.2: Establish Clean Architecture Package Structure**
+- [x] **Task 0.2: Establish Clean Architecture Package Structure**
   - Create `core/designsystem/` (theme, tokens, components, canvas charts).
   - Create `core/database/` (entities, DAOs, Room database).
   - Create `core/datastore/` (preferences, settings, onboarding).
   - Create `core/domain/` (rule engine, deduplication, OTP detector, financial detector).
   - Create `core/service/` (listener service, notification lifecycle tracker).
   - Create `feature/home/`, `feature/history/`, `feature/rules/`, `feature/analytics/`, `feature/settings/`, `feature/onboarding/`.
-- [ ] **Task 0.3: Dependency & Gradle Setup**
+- [x] **Task 0.3: Dependency & Gradle Setup**
   - Verify Jetpack Compose BOM `2026.02.01`, Kotlin `2.2.10`, Hilt `2.59.2`, Room `2.8.4`.
   - Add `androidx.work:work-runtime-ktx` for automated retention cleanup and schedule evaluation.
   - Add `androidx.compose.material:material-icons-extended` for complete icon availability.
@@ -423,7 +423,7 @@ Cleanup     Data Layer  Listener    Rule Engine Design Sys  Primary UI  Subscree
 ### Phase 1: Robust Data Layer & Schema Architecture (Room + DataStore)
 **Goal:** Implement the complete relational Room schema (v2) supporting logical events, update histories, multi-condition rules, schedules, and analytics snapshots.
 
-- [ ] **Task 1.1: Room Entity Implementation (`Database.kt`)**
+- [x] **Task 1.1: Room Entity Implementation (`Database.kt`)**
   - Implement `NotificationEvent` entity with 32 fields (key, packageName, initial/latest title & text, channel, flags, ongoing, progress, isOtp, otpCode, isFinancial, isPromotional, timestamps, updateCount, wasBlocked, blockReason, ruleId).
   - Implement `NotificationUpdate` entity for continuous update tracking.
   - Implement `BlockingRule` entity for master blocking modes and custom rules.
@@ -432,7 +432,7 @@ Cleanup     Data Layer  Listener    Rule Engine Design Sys  Primary UI  Subscree
   - Implement `BlockedApp` entity for Selected Apps mode.
   - Implement `Schedule` entity with days-of-week recurrence and start/end time.
   - Implement `NotificationCategory` entity with preconfigured social media apps.
-- [ ] **Task 1.2: Comprehensive DAO Implementation (`NotificationDao.kt`, `RuleDao.kt`)**
+- [x] **Task 1.2: Comprehensive DAO Implementation (`NotificationDao.kt`, `RuleDao.kt`)**
   - `NotificationDao`:
     - Reactive Flow queries for all events ordered by `last_updated_at DESC`.
     - Multi-filter query supporting search text, `ALL`, `BLOCKED`, `ALLOWED`, and `IMPORTANT` chips.
@@ -441,7 +441,7 @@ Cleanup     Data Layer  Listener    Rule Engine Design Sys  Primary UI  Subscree
     - Update history CRUD and cutoff-based retention deletion (`deleteEventsOlderThan(cutoff)`).
   - `RuleDao`:
     - Full CRUD for master rules, conditions, whitelist tables, blocked apps, schedules, and categories.
-- [ ] **Task 1.3: DataStore Preferences Expansion (`SettingsDataStore.kt`)**
+- [x] **Task 1.3: DataStore Preferences Expansion (`SettingsDataStore.kt`)**
   - Implement reactive preference flows for:
     - `isMasterBlockerEnabled: Flow<Boolean>` (default true)
     - `activeBlockingMode: Flow<String>` (default "SOCIAL_MEDIA")
@@ -453,7 +453,7 @@ Cleanup     Data Layer  Listener    Rule Engine Design Sys  Primary UI  Subscree
     - `dataRetentionDays: Flow<Int>` (default 90)
     - `isOnboardingCompleted: Flow<Boolean>` (default false)
     - `quickPauseUntil: Flow<Long>` (default 0L)
-- [ ] **Task 1.4: AppRepository & Hilt DI Integration**
+- [x] **Task 1.4: AppRepository & Hilt DI Integration**
   - Implement unified `AppRepository` exposing clean domain flows and suspending methods.
   - Provide `AppDatabase`, `NotificationDao`, `RuleDao`, and `SettingsDataStore` in `DiModules.kt`.
 
@@ -462,7 +462,7 @@ Cleanup     Data Layer  Listener    Rule Engine Design Sys  Primary UI  Subscree
 ### Phase 2: Notification Capture Pipeline, Deduplication & Lifecycle Engine
 **Goal:** Build the listener service that captures every notification, suppresses blocked notifications, and deduplicates continuous updates into single logical events.
 
-- [ ] **Task 2.1: Smart Deduplication Engine (`NotificationDeduplicationEngine.kt`)**
+- [x] **Task 2.1: Smart Deduplication Engine (`NotificationDeduplicationEngine.kt`)**
   - Thread-safe active notification key index using `ConcurrentHashMap`.
   - Distinguish between **New Event** vs **Ongoing Update**:
     - If key matches active event and notification has `FLAG_ONGOING_EVENT` or progress:
@@ -470,11 +470,11 @@ Cleanup     Data Layer  Listener    Rule Engine Design Sys  Primary UI  Subscree
       - Record snapshot in `NotificationUpdate` (throttled to max 1 update / 500ms to prevent SQLite contention).
     - If key is new:
       - Create a new `NotificationEvent` with `firstSeenAt = System.currentTimeMillis()`.
-- [ ] **Task 2.2: Removal & Duration Tracking**
+- [x] **Task 2.2: Removal & Duration Tracking**
   - Override `onNotificationRemoved(sbn: StatusBarNotification?, reason: Int)`.
   - Calculate active duration (`durationMs = System.currentTimeMillis() - firstSeenAt`).
   - Update `removedAt` in database and close active deduplication session.
-- [ ] **Task 2.3: Redesign `MyNotificationListenerService.kt`**
+- [x] **Task 2.3: Redesign `MyNotificationListenerService.kt`**
   - Unconditionally capture and persist all incoming notifications.
   - Invoke `NotificationRuleEngine.evaluate(sbn)`.
   - If `ruleResult.shouldBlock == true`:
@@ -490,7 +490,7 @@ Cleanup     Data Layer  Listener    Rule Engine Design Sys  Primary UI  Subscree
 ### Phase 3: Rule Evaluation Engine & Protection Services
 **Goal:** Deliver a deterministic multi-tier rule evaluation engine with contextual OTP, financial, and promotional SMS heuristics.
 
-- [ ] **Task 3.1: Deterministic Multi-tier Rule Evaluator (`NotificationRuleEngine.kt`)**
+- [x] **Task 3.1: Deterministic Multi-tier Rule Evaluator (`NotificationRuleEngine.kt`)**
   - Sequential evaluation order:
     1. **Emergency & Phone Call Bypass**: Incoming calls, alarms, emergency bypass contacts -> `ALLOW`.
     2. **OTP & Security Protection**: If OTP detector matches -> `ALLOW (Protected OTP)`.
@@ -505,14 +505,14 @@ Cleanup     Data Layer  Listener    Rule Engine Design Sys  Primary UI  Subscree
        - `SELECTED_APPS`: If package is in `blocked_apps` -> `BLOCK (Selected App Block)`.
        - `CUSTOM_RULES`: Evaluate custom conditions (AND/OR tree).
     9. **Default Fallback**: `ALLOW (Default Policy)`.
-- [ ] **Task 3.2: Contextual Multi-Signal OTP Detector (`OtpDetector.kt`)**
+- [x] **Task 3.2: Contextual Multi-Signal OTP Detector (`OtpDetector.kt`)**
   - Signal 1: Context keywords (`otp`, `verification code`, `security code`, `one-time password`).
   - Signal 2: Token boundaries (`\b\d{4,8}\b` or `\b[A-Z0-9]{5,8}\b`).
   - Anti-Signal (Negative filters): Reject if text contains marketing bundles ("GB for", "recharge offer", "validity", "dial *", "cashback offer").
-- [ ] **Task 3.3: Financial Alert Detector (`FinancialDetector.kt`)**
+- [x] **Task 3.3: Financial Alert Detector (`FinancialDetector.kt`)**
   - Pre-configure trusted Bangladeshi and international financial packages (`bKash`, `Nagad`, `Rocket`, `Upay`, `Cellfin`, `Citytouch`, `EBL Skybanking`, etc.).
   - Content keywords: "received", "sent", "transferred", "credited", "debited", "balance", "txn", "statement", "payment confirmed".
-- [ ] **Task 3.4: Promotional SMS Spam Detector (`PromotionalFilter.kt`)**
+- [x] **Task 3.4: Promotional SMS Spam Detector (`PromotionalFilter.kt`)**
   - Detect telecom bundle spam: `\b\d+\s*(gb|mb|min|sms)\b`, `recharge offer`, `dial *121*`.
   - Ensure legitimate personal and banking SMS are never classified as promotional spam.
 
@@ -521,18 +521,18 @@ Cleanup     Data Layer  Listener    Rule Engine Design Sys  Primary UI  Subscree
 ### Phase 4: Design System, Tokens, Typography & Reusable Components
 **Goal:** Implement the exact design language from `My_Notification_Design_System.md` with complete Dark & Light mode parity.
 
-- [ ] **Task 4.1: Color Tokens & Semantic Palettes (`ThemeColorTokens.kt`)**
+- [x] **Task 4.1: Color Tokens & Semantic Palettes (`ThemeColorTokens.kt`)**
   - Dark Mode tokens: Background `#080D14`, Surface `#101720`, Elevated `#151F2B`, Border `#263241`, Primary `#4F6BFF`.
   - Light Mode tokens: Background `#F7F9FC`, Surface `#FFFFFF`, Surface Soft `#F1F4F8`, Border `#E4E9F0`, Text `#111827`.
   - Semantic tokens: Success `#2CCB82`, Error `#F05B67`, Security `#8B6CFF`, Warning `#F5B84B`.
-- [ ] **Task 4.2: Typography System (`Type.kt`)**
+- [x] **Task 4.2: Typography System (`Type.kt`)**
   - Inter font family with fallback to Roboto.
   - Scales: Display Large 32sp Bold, Headline Medium 20sp SemiBold, Title Medium 16sp SemiBold, Body Medium 14sp Regular, Label Medium 12sp Medium.
-- [ ] **Task 4.3: Shape & Elevation Standards**
+- [x] **Task 4.3: Shape & Elevation Standards**
   - 4dp grid spacing (`4dp`, `8dp`, `12dp`, `16dp`, `20dp`, `24dp`).
   - Corner Radii: Cards `16dp`, Hero Card `20dp`, Buttons `12dp`, Chips `999dp` (pill).
   - Elevation: Subtle `0-2dp` with borders preferred over heavy shadows.
-- [ ] **Task 4.4: Reusable Component Library**
+- [x] **Task 4.4: Reusable Component Library**
   - `AppTopBar`: Compact header with title, subtitle, and Settings gear icon ⚙.
   - `AppBottomNavBar`: 4-tab bar (`Home`, `History`, `Rules`, `Analytics`).
   - `HeroRingCard`: Large circular glowing ring with bell icon, status title, and pill toggle button.
@@ -550,19 +550,19 @@ Cleanup     Data Layer  Listener    Rule Engine Design Sys  Primary UI  Subscree
 ### Phase 5: Primary Screen Implementation (10-Screen Visual Parity)
 **Goal:** Build the 5 core screens in both Dark and Light modes exactly matching the user's reference image.
 
-- [ ] **Task 5.1: Screen 1 — Home / Dashboard (`HomeScreen.kt`)**
+- [x] **Task 5.1: Screen 1 — Home / Dashboard (`HomeScreen.kt`)**
   - Top Bar: "My Notification", Subtitle: "Less noise. More you.", Settings gear icon ⚙.
   - Hero Ring Card: Glowing circular ring with bell icon, "Focused Mode" / "Active", and "Tap to disable" pill button.
   - 3 Summary Metrics: `128 Blocked`, `12 Allowed`, `86 Important/Saved`.
   - 3 Feature Cards: "Notification History", "Blocking Rules", "Analytics".
   - Scaffold with 4-tab Bottom Navigation.
-- [ ] **Task 5.2: Screen 2 — Notification History (`HistoryScreen.kt`)**
+- [x] **Task 5.2: Screen 2 — Notification History (`HistoryScreen.kt`)**
   - Rounded search bar: "Search notifications...".
   - Horizontal filter chips: `All` (selected), `Allowed`, `Blocked`, `Important`.
   - Date-grouped feed ("Today", "Yesterday").
   - Notification items with app icons, timestamps, status badges (`Blocked` in red, `Important` in blue/purple).
   - Tap notification row opens **Notification Detail Screen**.
-- [ ] **Task 5.3: Screen 3 — Blocking Rules (`BlockingRulesScreen.kt`)**
+- [x] **Task 5.3: Screen 3 — Blocking Rules (`BlockingRulesScreen.kt`)**
   - Top Bar: Title "Blocking Rules", `+` Add Rule action button.
   - 6 Master Rule Cards:
     - Card 1: `Block Social Media` (Instagram, Facebook, TikTok...) + Switch.
@@ -572,12 +572,12 @@ Cleanup     Data Layer  Listener    Rule Engine Design Sys  Primary UI  Subscree
     - Card 5: `Block Everything` (Except whitelisted apps) + Switch.
     - Card 6: `Custom Rules` (2 custom rules) + Chevron `>`.
   - Tap card opens editor for that rule.
-- [ ] **Task 5.4: Screen 4 — Analytics (`AnalyticsScreen.kt`)**
+- [x] **Task 5.4: Screen 4 — Analytics (`AnalyticsScreen.kt`)**
   - Top Bar: Title "Analytics", Time range selector chip "Last 7 days ▼".
   - Hero Metric Card: `1,248 Total Notifications`, Compose Canvas Bar Chart (Mon-Sun), Breakdown: `812 Blocked | 326 Allowed | 110 Important`.
   - Top Apps section: Ranked rows with horizontal proportion bars (Instagram 320, Facebook 210, YouTube 180, WhatsApp 120, Gmail 90).
   - Smart Insights cards: "68% of notifications came from 3 apps."
-- [ ] **Task 5.5: Screen 5 — Settings (`SettingsScreen.kt`)**
+- [x] **Task 5.5: Screen 5 — Settings (`SettingsScreen.kt`)**
   - Top Bar: Title "Settings".
   - Appearance section: Radio rows for `Dark Mode`, `Light Mode`, `System Default`.
   - General section:
@@ -593,34 +593,34 @@ Cleanup     Data Layer  Listener    Rule Engine Design Sys  Primary UI  Subscree
 ### Phase 6: Sub-Screens, Management Workflows & Custom Rule Builder
 **Goal:** Build all secondary configuration, detail, and management screens required by the product specification.
 
-- [ ] **Task 6.1: Notification Detail Screen (`NotificationDetailScreen.kt`)**
+- [x] **Task 6.1: Notification Detail Screen (`NotificationDetailScreen.kt`)**
   - App header with icon, app label, timestamp, and status badge.
   - Content Card: Title, Body text, Big text, Subtext.
   - Rule Explanation Card: Detailed reason why notification was blocked or allowed (e.g. `Blocked by: Block Social Media → Instagram` or `Allowed by: Whitelisted Keyword → OTP`).
   - Technical Metadata Card: Notification Key, Channel ID/Name, Category, Importance, Flags.
   - Lifecycle Card: First seen, Last updated, Removed at, Total duration, Update count.
-- [ ] **Task 6.2: Custom Rule Builder (`RuleBuilderScreen.kt`)**
+- [x] **Task 6.2: Custom Rule Builder (`RuleBuilderScreen.kt`)**
   - Visual sentence builder: `WHEN [App = X] AND [Text contains "Y"] AND [Time = Z] THEN [BLOCK / ALLOW]`.
   - Rule simulation preview: "This rule would have affected 16 notifications today".
-- [ ] **Task 6.3: Schedules Manager & Schedule Editor (`ScheduleScreen.kt`, `ScheduleEditorScreen.kt`)**
+- [x] **Task 6.3: Schedules Manager & Schedule Editor (`ScheduleScreen.kt`, `ScheduleEditorScreen.kt`)**
   - List of schedules with individual enable/disable toggles.
   - Schedule Editor: Name, Start/End time pickers, Weekdays selector chips, Action (Block All, Block Social, Custom), Exceptions (OTP, Financial, Calls).
-- [ ] **Task 6.4: Protection Center Screen (`ProtectionCenterScreen.kt`)**
+- [x] **Task 6.4: Protection Center Screen (`ProtectionCenterScreen.kt`)**
   - OTP Protection manager (enable/disable, keywords list, add keyword).
   - Financial Notifications manager (enable/disable, trusted apps checklist).
   - Promotional SMS Filter manager (enable/disable, sample rules).
   - Emergency Bypass manager (emergency apps / contacts).
-- [ ] **Task 6.5: App Picker Screen (`AppPickerScreen.kt`)**
+- [x] **Task 6.5: App Picker Screen (`AppPickerScreen.kt`)**
   - Searchable list of installed apps with real app icons, labels, package names, and multi-select checkboxes.
-- [ ] **Task 6.6: Whitelisted Apps & Whitelisted Keywords Screens**
+- [x] **Task 6.6: Whitelisted Apps & Whitelisted Keywords Screens**
   - `WhitelistedAppsScreen.kt`: List of whitelisted apps with "Add App" button and delete action.
   - `WhitelistedKeywordsScreen.kt`: Chip list of keywords with "Add Keyword" button and usage counts.
-- [ ] **Task 6.7: Notification Categories Screen (`CategoriesScreen.kt`)**
+- [x] **Task 6.7: Notification Categories Screen (`CategoriesScreen.kt`)**
   - Categorization of apps: Social Media, Financial, Messaging, Work, Shopping, Other.
   - User ability to add/remove apps from categories.
-- [ ] **Task 6.8: Rule Priority Visualizer (`RulePriorityScreen.kt`)**
+- [x] **Task 6.8: Rule Priority Visualizer (`RulePriorityScreen.kt`)**
   - Visual ordered list showing evaluation hierarchy from Emergency to Default policy.
-- [ ] **Task 6.9: Help, Tutorial & Problem Reporting**
+- [x] **Task 6.9: Help, Tutorial & Problem Reporting**
   - `HelpScreen.kt`: FAQ on notification access, OEM battery restrictions, Android suppression realities.
   - `TutorialScreen.kt`: Walkthrough of core features.
   - `ReportProblemScreen.kt`: Problem description form with auto-detected Android OS and device model.
@@ -630,7 +630,7 @@ Cleanup     Data Layer  Listener    Rule Engine Design Sys  Primary UI  Subscree
 ### Phase 7: Onboarding Flow, Data Retention & Backup/Restore
 **Goal:** Implement the first-run onboarding experience, automated storage pruning via WorkManager, and local encrypted backup.
 
-- [ ] **Task 7.1: Multi-Step Onboarding Wizard (`OnboardingScreen.kt`)**
+- [x] **Task 7.1: Multi-Step Onboarding Wizard (`OnboardingScreen.kt`)**
   - **Step 1: Introduction**: "Less noise. More control." -> CTA: "Get Started".
   - **Step 2: Notification Access**: Clear explanation why access is needed -> CTA: "Enable Notification Access" (deep-links to system settings).
   - **Step 3: Default Strategy**: Radio choices: "Block Social Media", "Selected Apps", "Block All", "Allow All".
@@ -638,12 +638,12 @@ Cleanup     Data Layer  Listener    Rule Engine Design Sys  Primary UI  Subscree
   - **Step 5: Protection Verification**: Quick switches: OTP Protection ON, Financial Protection ON.
   - **Step 6: Optional Schedule**: Quick Sleep mode prompt or "Skip for now".
   - **Step 7: Finish**: Sets `isOnboardingCompleted = true` and navigates to Home.
-- [ ] **Task 7.2: Data Retention Engine (`RetentionManager` + `WorkManager`)**
+- [x] **Task 7.2: Data Retention Engine (`RetentionManager` + `WorkManager`)**
   - Configurable retention in Settings: 7 days, 30 days, 90 days, 180 days, 1 year, Forever.
   - Background `PeriodicWorkRequest` (running once daily) to purge events and updates older than selected retention.
   - Storage stats UI: displays total events count and approximate database file size in MB.
   - "Delete all notification history" button with double confirmation dialog.
-- [ ] **Task 7.3: Local Backup & Restore (`BackupManager`)**
+- [x] **Task 7.3: Local Backup & Restore (`BackupManager`)**
   - Export rules, schedules, whitelists, and history to structured JSON format.
   - Import / Restore backup file with schema validation.
 
@@ -652,19 +652,19 @@ Cleanup     Data Layer  Listener    Rule Engine Design Sys  Primary UI  Subscree
 ### Phase 8: Production Hardening, Battery Optimization, Edge Cases & Verification
 **Goal:** Comprehensive testing across Android versions, OEM background optimization, and quality assurance.
 
-- [ ] **Task 8.1: Battery Optimization & OEM Background Reliability**
+- [x] **Task 8.1: Battery Optimization & OEM Background Reliability**
   - Request ignore battery optimizations (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) if needed.
   - Guide users on OEM-specific killers (Xiaomi MIUI/HyperOS autostart, Samsung sleeping apps, OnePlus battery restrictions) in Settings.
-- [ ] **Task 8.2: Android 14/15/16 Platform Compatibility**
+- [x] **Task 8.2: Android 14/15/16 Platform Compatibility**
   - Respect `POST_NOTIFICATIONS` permission (Android 13+).
   - Handle full-screen intent limitations gracefully without claiming impossible 100% blocking.
   - Provide accurate in-app explanations if Android prevents complete suppression.
-- [ ] **Task 8.3: Unit & Component Testing**
+- [x] **Task 8.3: Unit & Component Testing**
   - `OtpDetectorTest`: Benchmark against positive OTPs and negative marketing text with digits.
   - `NotificationRuleEngineTest`: Verify deterministic evaluation hierarchy across conflicts.
   - `DeduplicationEngineTest`: Verify download progress and call notifications result in 1 logical event.
   - `AnalyticsCalculationTest`: Verify accurate counts and no inflated statistics.
-- [ ] **Task 8.4: End-to-End Flow Verification & Design QA Checklist**
+- [x] **Task 8.4: End-to-End Flow Verification & Design QA Checklist**
   - Verify layout insets, status bar padding, 48dp minimum touch targets, TalkBack semantics.
   - Complete Dark Mode and Light Mode visual check against reference screenshot.
 
