@@ -39,6 +39,9 @@ interface NotificationDao {
     @Query("SELECT * FROM notification_events WHERE notification_key = :key LIMIT 1")
     suspend fun getEventByKey(key: String): NotificationEvent?
 
+    @Query("SELECT * FROM notification_events WHERE notification_key = :key AND removed_at IS NULL ORDER BY id DESC LIMIT 1")
+    suspend fun getActiveEventByKey(key: String): NotificationEvent?
+
     @Query("SELECT * FROM notification_events ORDER BY last_updated_at DESC")
     fun getAllEventsFlow(): Flow<List<NotificationEvent>>
 
@@ -103,6 +106,9 @@ interface NotificationDao {
 
     @Query("UPDATE notification_events SET is_read = 1")
     suspend fun markAllEventsAsRead()
+
+    @Query("UPDATE notification_events SET block_reason = :blockReason WHERE id = :id")
+    suspend fun updateBlockReason(id: Long, blockReason: String)
 
     // --- Updates CRUD ---
 

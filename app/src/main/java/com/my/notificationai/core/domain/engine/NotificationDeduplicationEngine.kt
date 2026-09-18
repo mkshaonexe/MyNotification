@@ -37,49 +37,95 @@ class NotificationDeduplicationEngine(
         val isClearable = (flags and Notification.FLAG_NO_CLEAR) == 0
         val progress = extras?.getInt(Notification.EXTRA_PROGRESS, 0) ?: 0
         val maxProgress = extras?.getInt(Notification.EXTRA_PROGRESS_MAX, 0) ?: 0
+
+        return processPostedNotification(
+            key = key,
+            packageName = packageName,
+            appLabel = appLabel,
+            title = title,
+            text = text,
+            bigText = bigText,
+            subText = subText,
+            channelId = channelId,
+            category = notification?.category,
+            flags = flags,
+            isOngoing = isOngoing,
+            isClearable = isClearable,
+            progress = progress,
+            maxProgress = maxProgress,
+            ruleResult = ruleResult
+        )
+    }
+
+    suspend fun processPostedNotification(
+        key: String,
+        packageName: String,
+        appLabel: String,
+        title: String,
+        text: String,
+        bigText: String? = null,
+        subText: String? = null,
+        channelId: String = "",
+        category: String? = null,
+        flags: Int = 0,
+        isOngoing: Boolean = false,
+        isClearable: Boolean = true,
+        progress: Int = 0,
+        maxProgress: Int = 0,
+        ruleResult: RuleEvaluationResult,
+        currentTimeMillis: Long = System.currentTimeMillis()
+    ): Long {
         val isProgress = maxProgress > 0
-        val now = System.currentTimeMillis()
+        val now = currentTimeMillis
 
         val activeEventId = activeEvents[key]
+        var existing: NotificationEvent? = null
         if (activeEventId != null) {
-            val existing = notificationDao.getEventById(activeEventId)
+            existing = notificationDao.getEventById(activeEventId)
+        }
+        if (existing == null) {
+            existing = notificationDao.getActiveEventByKey(key)
             if (existing != null) {
-                // Update existing event
-                val updated = existing.copy(
-                    latestTitle = title,
-                    latestText = text,
-                    bigText = bigText ?: existing.bigText,
-                    subText = subText ?: existing.subText,
-                    isOngoing = isOngoing,
-                    isClearable = isClearable,
-                    isProgress = isProgress,
-                    progress = progress,
-                    maxProgress = maxProgress,
-                    lastUpdatedAt = now,
-                    updateCount = existing.updateCount + 1,
-                    wasBlocked = ruleResult.shouldBlock,
-                    blockReason = ruleResult.reason,
-                    responsibleRuleId = ruleResult.ruleId ?: existing.responsibleRuleId,
-                    matchingRuleName = ruleResult.ruleName ?: existing.matchingRuleName
-                )
-                notificationDao.updateEvent(updated)
-
-                // Throttle snapshot to max 1 per 500ms
-                val lastSnapshot = lastSnapshotTime[key] ?: 0L
-                if (now - lastSnapshot >= 500L) {
-                    notificationDao.insertUpdate(
-                        NotificationUpdate(
-                            eventId = existing.id,
-                            title = title,
-                            text = text,
-                            progress = progress,
-                            timestamp = now
-                        )
-                    )
-                    lastSnapshotTime[key] = now
-                }
-                return existing.id
+                activeEvents[key] = existing.id
             }
+        }
+
+        if (existing != null) {
+            // Update existing event
+            val updated = existing.copy(
+                latestTitle = title,
+                latestText = text,
+                bigText = bigText ?: existing.bigText,
+                subText = subText ?: existing.subText,
+                isOngoing = isOngoing,
+                isClearable = isClearable,
+                isProgress = isProgress,
+                progress = progress,
+                maxProgress = maxProgress,
+                lastUpdatedAt = now,
+                updateCount = existing.updateCount + 1,
+                wasBlocked = ruleResult.shouldBlock,
+                blockReason = ruleResult.reason,
+                responsibleRuleId = ruleResult.ruleId ?: existing.responsibleRuleId,
+                matchingRuleName = ruleResult.ruleName ?: existing.matchingRuleName
+            )
+            notificationDao.updateEvent(updated)
+
+            // Throttle snapshot to max 1 per 500ms
+            val lastSnapshot = lastSnapshotTime[key] ?: 0L
+            if (now - lastSnapshot >= 500L) {
+                notificationDao.insertUpdate(
+                    NotificationUpdate(
+                        eventId = existing.id,
+                        title = title,
+                        text = text,
+                        progress = progress,
+                        timestamp = now
+                    )
+                )
+                lastSnapshotTime[key] = now
+            }
+            return existing.id
         }
 
         // New logical event
@@ -94,7 +140,7 @@ class NotificationDeduplicationEngine(
             bigText = bigText,
             subText = subText,
             channelId = channelId,
-            category = notification?.category,
+            category = category,
             flags = flags,
             importance = 0,
             isOngoing = isOngoing,
@@ -123,22 +169,25 @@ class NotificationDeduplicationEngine(
         return eventId
     }
 
-    suspend fun processRemovedNotification(key: String): Long? {
+    suspend fun processRemovedNotification(key: String, currentTimeMillis: Long = System.currentTimeMillis()): Long? {
         val activeEventId = activeEvents.remove(key)
         lastSnapshotTime.remove(key)
-        val now = System.currentTimeMillis()
+        val now = currentTimeMillis
 
-        if (activeEventId != null) {
-            val event = notificationDao.getEventById(activeEventId)
-            if (event != null) {
-                val duration = (now - event.firstSeenAt).coerceAtLeast(0L)
-                val updated = event.copy(
-                    removedAt = now,
-                    durationMs = duration
-                )
-                notificationDao.updateEvent(updated)
-                return duration
-            }
+        val event = if (activeEventId != null) {
+            notificationDao.getEventById(activeEventId)
+        } else {
+            notificationDao.getActiveEventByKey(key)
+        }
+
+        if (event != null) {
+            val duration = (now - event.firstSeenAt).coerceAtLeast(0L)
+            val updated = event.copy(
+                removedAt = now,
+                durationMs = duration
+            )
+            notificationDao.updateEvent(updated)
+            return duration
         }
         return null
     }

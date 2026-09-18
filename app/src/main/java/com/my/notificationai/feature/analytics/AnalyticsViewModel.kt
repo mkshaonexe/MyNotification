@@ -83,8 +83,15 @@ class AnalyticsViewModel @Inject constructor(
             dayName
         }
 
-        val sevenDaysAgo = System.currentTimeMillis() - (7 * 24L * 60L * 60L * 1000L)
-        events.filter { it.lastUpdatedAt >= sevenDaysAgo }.forEach { event ->
+        val startCal = Calendar.getInstance().apply {
+            add(Calendar.DAY_OF_YEAR, -6)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val windowStart = startCal.timeInMillis
+        events.filter { it.lastUpdatedAt >= windowStart }.forEach { event ->
             calendar.timeInMillis = event.lastUpdatedAt
             val dayName = dayFormat.format(calendar.time)
             if (dayBuckets.containsKey(dayName)) {

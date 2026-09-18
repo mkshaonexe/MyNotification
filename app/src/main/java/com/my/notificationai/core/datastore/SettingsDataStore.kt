@@ -17,7 +17,7 @@ import java.io.IOException
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
-class SettingsDataStore(context: Context) {
+class SettingsDataStore(context: Context) : SettingsProvider {
 
     private val dataStore = context.dataStore
 
@@ -34,46 +34,46 @@ class SettingsDataStore(context: Context) {
         val ONBOARDING_COMPLETED_KEY = booleanPreferencesKey("is_onboarding_completed")
     }
 
-    val isMasterBlockerEnabled: Flow<Boolean> = dataStore.data
+    override val isMasterBlockerEnabled: Flow<Boolean> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[MASTER_BLOCKER_KEY] ?: true }
 
     // Compatibility alias
-    val isBlockAllEnabled: Flow<Boolean> = isMasterBlockerEnabled
+    override val isBlockAllEnabled: Flow<Boolean> = isMasterBlockerEnabled
 
-    val activeBlockingMode: Flow<String> = dataStore.data
+    override val activeBlockingMode: Flow<String> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[ACTIVE_BLOCKING_MODE_KEY] ?: "SOCIAL_MEDIA" }
 
-    val quickPauseUntil: Flow<Long> = dataStore.data
+    override val quickPauseUntil: Flow<Long> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[QUICK_PAUSE_UNTIL_KEY] ?: 0L }
 
-    val themePreference: Flow<String> = dataStore.data
+    override val themePreference: Flow<String> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[THEME_KEY] ?: "DARK" }
 
-    val isOtpProtectionEnabled: Flow<Boolean> = dataStore.data
+    override val isOtpProtectionEnabled: Flow<Boolean> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[OTP_PROTECTION_KEY] ?: true }
 
-    val isFinancialProtectionEnabled: Flow<Boolean> = dataStore.data
+    override val isFinancialProtectionEnabled: Flow<Boolean> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[FINANCIAL_PROTECTION_KEY] ?: true }
 
-    val isPromotionalSmsFilterEnabled: Flow<Boolean> = dataStore.data
+    override val isPromotionalSmsFilterEnabled: Flow<Boolean> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[PROMOTIONAL_SMS_KEY] ?: true }
 
-    val isEmergencyBypassEnabled: Flow<Boolean> = dataStore.data
+    override val isEmergencyBypassEnabled: Flow<Boolean> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[EMERGENCY_BYPASS_KEY] ?: true }
 
-    val dataRetentionDays: Flow<Int> = dataStore.data
+    override val dataRetentionDays: Flow<Int> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[DATA_RETENTION_DAYS_KEY] ?: 90 }
 
-    val isOnboardingCompleted: Flow<Boolean> = dataStore.data
+    override val isOnboardingCompleted: Flow<Boolean> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it[ONBOARDING_COMPLETED_KEY] ?: false }
 

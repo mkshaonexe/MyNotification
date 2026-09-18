@@ -3,13 +3,13 @@ package com.my.notificationai.core.domain.engine
 import android.app.Notification
 import android.service.notification.StatusBarNotification
 import com.my.notificationai.core.database.dao.RuleDao
-import com.my.notificationai.core.datastore.SettingsDataStore
+import com.my.notificationai.core.datastore.SettingsProvider
 import com.my.notificationai.core.domain.models.RuleEvaluationResult
 import kotlinx.coroutines.flow.first
 
 class NotificationRuleEngine(
     private val ruleDao: RuleDao,
-    private val settingsDataStore: SettingsDataStore,
+    private val settingsDataStore: SettingsProvider,
     private val otpDetector: OtpDetector,
     private val financialDetector: FinancialDetector,
     private val promotionalFilter: PromotionalFilter,
@@ -22,8 +22,29 @@ class NotificationRuleEngine(
         val extras = notification?.extras
         val title = extras?.getCharSequence("android.title")?.toString() ?: ""
         val text = extras?.getCharSequence("android.text")?.toString() ?: ""
+        val channelId = notification?.channelId ?: ""
+        val category = notification?.category
+        val flags = notification?.flags ?: 0
+        return evaluate(
+            packageName = packageName,
+            title = title,
+            text = text,
+            channelId = channelId,
+            category = category,
+            flags = flags
+        )
+    }
+
+    suspend fun evaluate(
+        packageName: String,
+        title: String,
+        text: String,
+        channelId: String = "",
+        category: String? = null,
+        flags: Int = 0,
+        currentTimeMillis: Long = System.currentTimeMillis()
+    ): RuleEvaluationResult {
         val combinedText = "$title $text"
-        val channelId = sbn.notification?.channelId ?: ""
 
         val isEmergencyBypassEnabled = settingsDataStore.isEmergencyBypassEnabled.first()
         val isOtpProtectionEnabled = settingsDataStore.isOtpProtectionEnabled.first()
@@ -36,9 +57,12 @@ class NotificationRuleEngine(
         // 1. Emergency & Phone Call Bypass
         val isCall = packageName.contains("dialer") || packageName.contains("telephony") || packageName.contains("phone")
         val isAlarm = packageName.contains("clock") || packageName.contains("alarm")
-        val isCallCategory = notification?.category == Notification.CATEGORY_CALL || 
-                             notification?.category == Notification.CATEGORY_ALARM ||
-                             notification?.category == Notification.CATEGORY_MISSED_CALL
+        val isCallCategory = category == "call" || 
+                             category == "alarm" ||
+                             category == "missed_call" ||
+                             category == Notification.CATEGORY_CALL || 
+                             category == Notification.CATEGORY_ALARM ||
+                             category == Notification.CATEGORY_MISSED_CALL
 
         if (isEmergencyBypassEnabled && (isCall || isAlarm || isCallCategory)) {
             return RuleEvaluationResult(
@@ -87,21 +111,31 @@ class NotificationRuleEngine(
         }
 
         // 5. Keyword Whitelist
-        val whitelistedKeywords = ruleDao.getAllWhitelistedKeywordsSync()
-        for (kw in whitelistedKeywords) {
-            if (combinedText.contains(kw.keyword, ignoreCase = true)) {
-                return RuleEvaluationResult(
-                    shouldBlock = false,
-                    reason = "Whitelisted Keyword: ${kw.keyword}",
-                    isOtp = isOtp,
-                    otpCode = otpCode,
-                    isFinancial = isFinancial
-                )
+        val allRules = ruleDao.getAllRulesSync()
+        val masterRules = allRules.filter { it.ruleType != "CUSTOM" }.associateBy { it.ruleType }
+        val customRules = allRules.filter { it.ruleType == "CUSTOM" && it.isEnabled }.sortedByDescending { it.priority }
+
+        val keywordsRule = masterRules["ALLOW_IMPORTANT_KEYWORDS"]
+        val isKeywordsRuleActive = (keywordsRule?.isEnabled == true) || (keywordsRule == null)
+        if (isKeywordsRuleActive) {
+            val whitelistedKeywords = ruleDao.getAllWhitelistedKeywordsSync()
+            for (kw in whitelistedKeywords) {
+                if (combinedText.contains(kw.keyword, ignoreCase = true)) {
+                    return RuleEvaluationResult(
+                        shouldBlock = false,
+                        reason = "Whitelisted Keyword: ${kw.keyword}",
+                        ruleId = keywordsRule?.id,
+                        ruleName = keywordsRule?.name ?: "Allow Important Keywords",
+                        isOtp = isOtp,
+                        otpCode = otpCode,
+                        isFinancial = isFinancial
+                    )
+                }
             }
         }
 
         // 6. Quick Pause Check
-        val now = System.currentTimeMillis()
+        val now = currentTimeMillis
         if (now < quickPauseUntil) {
             return RuleEvaluationResult(
                 shouldBlock = false,
@@ -138,24 +172,46 @@ class NotificationRuleEngine(
         }
 
         // 9. Schedule Evaluation
-        val schedules = ruleDao.getAllSchedulesSync()
-        for (schedule in schedules) {
-            if (scheduleEngine.isScheduleActive(schedule, now)) {
-                if (schedule.action == "BLOCK_ALL") {
-                    return RuleEvaluationResult(
-                        shouldBlock = true,
-                        reason = "Schedule: ${schedule.title}",
-                        isOtp = isOtp,
-                        otpCode = otpCode,
-                        isFinancial = isFinancial
-                    )
+        val scheduleRule = masterRules["SCHEDULE_BLOCKING"]
+        val isScheduleRuleActive = (scheduleRule?.isEnabled == true) || activeBlockingMode == "SCHEDULE_BLOCKING"
+        if (isScheduleRuleActive) {
+            val schedules = ruleDao.getAllSchedulesSync()
+            for (schedule in schedules) {
+                if (scheduleEngine.isScheduleActive(schedule, now)) {
+                    if (schedule.action == "BLOCK_ALL") {
+                        return RuleEvaluationResult(
+                            shouldBlock = true,
+                            reason = "Schedule: ${schedule.title}",
+                            ruleId = scheduleRule?.id ?: schedule.id,
+                            ruleName = "Schedule: ${schedule.title}",
+                            isOtp = isOtp,
+                            otpCode = otpCode,
+                            isFinancial = isFinancial
+                        )
+                    } else if (schedule.action == "BLOCK_SOCIAL") {
+                        val socialCategory = ruleDao.getCategory("social")
+                        val socialPackages = socialCategory?.packageNames?.split(",")?.map { it.trim() } ?: listOf(
+                            "com.instagram.android", "com.facebook.katana", "com.facebook.orca",
+                            "com.zhiliaoapp.musically", "com.twitter.android", "com.snapchat.android",
+                            "com.google.android.youtube", "org.telegram.messenger"
+                        )
+                        if (socialPackages.contains(packageName)) {
+                            return RuleEvaluationResult(
+                                shouldBlock = true,
+                                reason = "Schedule (Social): ${schedule.title}",
+                                ruleId = scheduleRule?.id ?: schedule.id,
+                                ruleName = "Schedule: ${schedule.title}",
+                                isOtp = isOtp,
+                                otpCode = otpCode,
+                                isFinancial = isFinancial
+                            )
+                        }
+                    }
                 }
             }
         }
 
         // 10. Master Blocker Mode Evaluation
-        val masterRules = ruleDao.getAllRulesSync().associateBy { it.ruleType }
-
         // Check if "Block Everything" rule is enabled
         val blockEverythingRule = masterRules["BLOCK_EVERYTHING"]
         if (blockEverythingRule?.isEnabled == true || activeBlockingMode == "BLOCK_ALL") {
@@ -211,9 +267,8 @@ class NotificationRuleEngine(
             }
         }
 
-        // Check Custom Rules
-        val customRule = masterRules["CUSTOM"]
-        if (customRule?.isEnabled == true) {
+        // Check Custom Rules (all enabled custom rules evaluated in descending priority order)
+        for (customRule in customRules) {
             val conditions = ruleDao.getConditionsForRuleSync(customRule.id)
             if (conditions.isNotEmpty()) {
                 var allMatch = true
@@ -234,6 +289,12 @@ class NotificationRuleEngine(
                             "NOT_CONTAINS" -> !text.contains(condition.value, ignoreCase = true)
                             "STARTS_WITH" -> text.startsWith(condition.value, ignoreCase = true)
                             "ENDS_WITH" -> text.endsWith(condition.value, ignoreCase = true)
+                            else -> false
+                        }
+                        "KEYWORD" -> when (condition.operator) {
+                            "EQUALS" -> combinedText.equals(condition.value, ignoreCase = true)
+                            "CONTAINS" -> combinedText.contains(condition.value, ignoreCase = true)
+                            "NOT_CONTAINS" -> !combinedText.contains(condition.value, ignoreCase = true)
                             else -> false
                         }
                         "CHANNEL" -> channelId.equals(condition.value, ignoreCase = true)

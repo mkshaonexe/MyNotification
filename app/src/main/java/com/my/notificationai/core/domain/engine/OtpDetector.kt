@@ -4,18 +4,19 @@ import java.util.regex.Pattern
 
 class OtpDetector {
 
-    private val otpKeywords = listOf(
-        "otp",
+    private val wordBoundaryPattern = Pattern.compile("(?i)\\b(otp|2fa|v-code)\\b")
+
+    private val phraseKeywords = listOf(
         "verification code",
         "security code",
         "one-time password",
         "one time password",
-        "v-code",
         "login code",
         "auth code",
         "confirmation code",
         "passcode",
-        "secret code"
+        "secret code",
+        "access code"
     )
 
     private val negativeKeywords = listOf(
@@ -32,7 +33,7 @@ class OtpDetector {
         "flat off"
     )
 
-    private val codePattern = Pattern.compile("\\b(\\d{4,8})\\b")
+    private val codePattern = Pattern.compile("(?i)\\b(?:g-)?(\\d{4,8})\\b")
 
     /**
      * Evaluates text for OTP presence.
@@ -46,13 +47,13 @@ class OtpDetector {
             return Pair(false, null)
         }
 
-        // Check for presence of OTP keywords
-        val hasOtpKeyword = otpKeywords.any { combined.contains(it) }
+        // Check for presence of OTP keywords with word boundary for acronyms or exact phrase
+        val hasOtpKeyword = wordBoundaryPattern.matcher(combined).find() || phraseKeywords.any { combined.contains(it) }
         if (!hasOtpKeyword) {
             return Pair(false, null)
         }
 
-        // Search for 4-8 digit numeric code
+        // Search for 4-8 digit numeric code (e.g. 123456 or G-123456)
         val matcher = codePattern.matcher("$title $text")
         return if (matcher.find()) {
             val code = matcher.group(1)

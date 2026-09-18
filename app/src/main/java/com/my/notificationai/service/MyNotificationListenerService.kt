@@ -21,6 +21,9 @@ class MyNotificationListenerService : NotificationListenerService() {
     @Inject
     lateinit var deduplicationEngine: NotificationDeduplicationEngine
 
+    @Inject
+    lateinit var notificationDao: com.my.notificationai.core.database.dao.NotificationDao
+
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
 
@@ -81,7 +84,7 @@ class MyNotificationListenerService : NotificationListenerService() {
                 val ruleResult = ruleEngine.evaluate(sbn)
 
                 // UNCONDITIONAL CAPTURE: Always persist to database through deduplication engine
-                deduplicationEngine.processPostedNotification(sbn, appLabel, ruleResult)
+                val eventId = deduplicationEngine.processPostedNotification(sbn, appLabel, ruleResult)
 
                 // If rule dictates blocking, suppress notification from tray
                 if (ruleResult.shouldBlock) {
@@ -90,6 +93,11 @@ class MyNotificationListenerService : NotificationListenerService() {
                         Log.d(TAG, "Blocked and cancelled notification from $packageName [${ruleResult.reason}]")
                     } catch (e: SecurityException) {
                         Log.w(TAG, "System prevented cancellation of notification from $packageName", e)
+                        try {
+                            notificationDao.updateBlockReason(eventId, "Android prevented suppression")
+                        } catch (ex: Exception) {
+                            Log.e(TAG, "Failed to update block reason", ex)
+                        }
                     }
                 } else {
                     Log.d(TAG, "Allowed notification from $packageName [${ruleResult.reason}]")

@@ -44,4 +44,38 @@ class FinancialDetectorTest {
         )
         assertFalse(isFinancial)
     }
+
+    @Test
+    fun `rejects social media chat messages containing sent or received`() {
+        val isSentPhoto = financialDetector.isFinancial(
+            packageName = "com.instagram.android",
+            title = "Instagram",
+            text = "Alice sent a photo."
+        )
+        assertFalse(isSentPhoto)
+
+        val isSentMsg = financialDetector.isFinancial(
+            packageName = "com.whatsapp",
+            title = "WhatsApp",
+            text = "Bob sent 2 messages."
+        )
+        assertFalse(isSentMsg)
+    }
+
+    @Test
+    fun `detects banking transfer and payment phrases`() {
+        val isPayment = financialDetector.isFinancial(
+            packageName = "com.google.android.apps.messaging",
+            title = "Alert",
+            text = "Payment received: Tk 500 from John"
+        )
+        assertTrue(isPayment)
+
+        val isDebit = financialDetector.isFinancial(
+            packageName = "com.google.android.apps.messaging",
+            title = "Bank",
+            text = "You sent BDT 2000 to A/C 123456"
+        )
+        assertTrue(isDebit)
+    }
 }
