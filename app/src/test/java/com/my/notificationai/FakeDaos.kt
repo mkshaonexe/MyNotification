@@ -12,126 +12,193 @@ import com.my.notificationai.core.database.entities.RuleCondition
 import com.my.notificationai.core.database.entities.Schedule
 import com.my.notificationai.core.database.entities.WhitelistedApp
 import com.my.notificationai.core.database.entities.WhitelistedKeyword
+import com.my.notificationai.core.datastore.SettingsProvider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+
+class FakeSettingsProvider : SettingsProvider {
+    val masterBlocker = MutableStateFlow(true)
+    val blockingMode = MutableStateFlow("SOCIAL_MEDIA")
+    val quickPause = MutableStateFlow(0L)
+    val theme = MutableStateFlow("DARK")
+    val otpProtection = MutableStateFlow(true)
+    val financialProtection = MutableStateFlow(true)
+    val promotionalSmsFilter = MutableStateFlow(true)
+    val emergencyBypass = MutableStateFlow(true)
+    val retentionDays = MutableStateFlow(90)
+    val onboardingCompleted = MutableStateFlow(true)
+
+    override val isMasterBlockerEnabled: Flow<Boolean> = masterBlocker.asStateFlow()
+    override val isBlockAllEnabled: Flow<Boolean> = masterBlocker.asStateFlow()
+    override val activeBlockingMode: Flow<String> = blockingMode.asStateFlow()
+    override val quickPauseUntil: Flow<Long> = quickPause.asStateFlow()
+    override val themePreference: Flow<String> = theme.asStateFlow()
+    override val isOtpProtectionEnabled: Flow<Boolean> = otpProtection.asStateFlow()
+    override val isFinancialProtectionEnabled: Flow<Boolean> = financialProtection.asStateFlow()
+    override val isPromotionalSmsFilterEnabled: Flow<Boolean> = promotionalSmsFilter.asStateFlow()
+    override val isEmergencyBypassEnabled: Flow<Boolean> = emergencyBypass.asStateFlow()
+    override val dataRetentionDays: Flow<Int> = retentionDays.asStateFlow()
+    override val isOnboardingCompleted: Flow<Boolean> = onboardingCompleted.asStateFlow()
+}
 
 class FakeNotificationDao : NotificationDao {
-    val events = mutableMapOf<Long, NotificationEvent>()
+    private val eventsMap = LinkedHashMap<Long, NotificationEvent>()
+    val events: List<NotificationEvent>
+        get() = ArrayList(eventsMap.values)
+
     val updates = mutableListOf<NotificationUpdate>()
     private var nextId = 1L
+    private var nextUpdateId = 1L
+
+    private val _eventsFlow = MutableStateFlow<List<NotificationEvent>>(emptyList())
+    private fun notifyChanged() {
+        _eventsFlow.value = ArrayList(eventsMap.values)
+    }
 
     override suspend fun insertEvent(event: NotificationEvent): Long {
-        val id = nextId++
+        val id = if (event.id == 0L) nextId++ else event.id
         val saved = event.copy(id = id)
-        events[id] = saved
+        eventsMap[id] = saved
+        notifyChanged()
         return id
     }
 
     override suspend fun updateEvent(event: NotificationEvent) {
-        events[event.id] = event
+        eventsMap[event.id] = event
+        notifyChanged()
     }
 
     override suspend fun deleteEvent(event: NotificationEvent) {
-        events.remove(event.id)
+        eventsMap.remove(event.id)
+        notifyChanged()
     }
 
     override suspend fun deleteEventById(id: Long) {
-        events.remove(id)
+        eventsMap.remove(id)
+        notifyChanged()
     }
 
     override suspend fun deleteAllEvents() {
-        events.clear()
+        eventsMap.clear()
         updates.clear()
+        notifyChanged()
     }
 
-    override suspend fun getEventById(id: Long): NotificationEvent? = events[id]
+    override suspend fun getEventById(id: Long): NotificationEvent? = eventsMap[id]
 
-    override fun getEventByIdFlow(id: Long): Flow<NotificationEvent?> = MutableStateFlow(events[id])
+    override fun getEventByIdFlow(id: Long): Flow<NotificationEvent?> =
+        _eventsFlow.map { list -> list.find { it.id == id } }
 
-    override suspend fun getEventByKey(key: String): NotificationEvent? = events.values.find { it.notificationKey == key }
+    override suspend fun getEventByKey(key: String): NotificationEvent? =
+        eventsMap.values.find { it.notificationKey == key }
 
     override suspend fun getActiveEventByKey(key: String): NotificationEvent? =
-        events.values.filter { it.notificationKey == key && it.removedAt == null }.maxByOrNull { it.id }
+        eventsMap.values.filter { it.notificationKey == key && it.removedAt == null }.maxByOrNull { it.id }
 
-    override fun getAllEventsFlow(): Flow<List<NotificationEvent>> = MutableStateFlow(events.values.toList())
+    override fun getAllEventsFlow(): Flow<List<NotificationEvent>> = _eventsFlow
 
     override fun getFilteredEventsFlow(query: String, filter: String): Flow<List<NotificationEvent>> =
-        MutableStateFlow(events.values.toList())
+        _eventsFlow.map { list ->
+            list.filter { ev ->
+                val matchesQuery = query.isBlank() ||
+                        ev.appLabel.contains(query, ignoreCase = true) ||
+                        ev.latestTitle.contains(query, ignoreCase = true) ||
+                        ev.latestText.contains(query, ignoreCase = true)
+                val matchesFilter = when (filter) {
+                    "ALLOWED" -> !ev.wasBlocked
+                    "BLOCKED" -> ev.wasBlocked
+                    "IMPORTANT" -> ev.isOtp || ev.isFinancial
+                    else -> true
+                }
+                matchesQuery && matchesFilter
+            }
+        }
 
-    override fun getTotalEventsCount(): Flow<Int> = MutableStateFlow(events.size)
-    override fun getBlockedEventsCount(): Flow<Int> = MutableStateFlow(events.values.count { it.wasBlocked })
-    override fun getAllowedEventsCount(): Flow<Int> = MutableStateFlow(events.values.count { !it.wasBlocked })
-    override fun getImportantEventsCount(): Flow<Int> = MutableStateFlow(events.values.count { it.isOtp || it.isFinancial })
+    override fun getTotalEventsCount(): Flow<Int> = _eventsFlow.map { it.size }
+    override fun getBlockedEventsCount(): Flow<Int> = _eventsFlow.map { list -> list.count { it.wasBlocked } }
+    override fun getAllowedEventsCount(): Flow<Int> = _eventsFlow.map { list -> list.count { !it.wasBlocked } }
+    override fun getImportantEventsCount(): Flow<Int> = _eventsFlow.map { list -> list.count { it.isOtp || it.isFinancial } }
 
     override fun getEventsBetween(startTime: Long, endTime: Long): Flow<List<NotificationEvent>> =
-        MutableStateFlow(events.values.filter { it.lastUpdatedAt in startTime..endTime })
+        _eventsFlow.map { list -> list.filter { it.lastUpdatedAt in startTime..endTime } }
 
     override fun getEventsCountBetween(startTime: Long, endTime: Long): Flow<Int> =
-        MutableStateFlow(events.values.count { it.lastUpdatedAt in startTime..endTime })
+        _eventsFlow.map { list -> list.count { it.lastUpdatedAt in startTime..endTime } }
 
     override fun getBlockedEventsCountBetween(startTime: Long, endTime: Long): Flow<Int> =
-        MutableStateFlow(events.values.count { it.wasBlocked && it.lastUpdatedAt in startTime..endTime })
+        _eventsFlow.map { list -> list.count { it.wasBlocked && it.lastUpdatedAt in startTime..endTime } }
 
     override fun getAllowedEventsCountBetween(startTime: Long, endTime: Long): Flow<Int> =
-        MutableStateFlow(events.values.count { !it.wasBlocked && it.lastUpdatedAt in startTime..endTime })
+        _eventsFlow.map { list -> list.count { !it.wasBlocked && it.lastUpdatedAt in startTime..endTime } }
 
     override fun getImportantEventsCountBetween(startTime: Long, endTime: Long): Flow<Int> =
-        MutableStateFlow(events.values.count { (it.isOtp || it.isFinancial) && it.lastUpdatedAt in startTime..endTime })
+        _eventsFlow.map { list -> list.count { (it.isOtp || it.isFinancial) && it.lastUpdatedAt in startTime..endTime } }
 
-    override fun getTopAppsBetween(startTime: Long, endTime: Long, limit: Int): Flow<List<AppNotificationCount>> {
-        val grouped = events.values
-            .filter { it.lastUpdatedAt in startTime..endTime }
-            .groupBy { it.packageName to it.appLabel }
-            .map { (k, v) ->
-                val blockedCount = v.count { it.wasBlocked }
-                AppNotificationCount(
-                    packageName = k.first,
-                    appLabel = k.second,
-                    totalCount = v.size,
-                    blockedCount = blockedCount
-                )
-            }
-            .sortedByDescending { it.totalCount }
-            .take(limit)
-        return MutableStateFlow(grouped)
-    }
+    override fun getTopAppsBetween(startTime: Long, endTime: Long, limit: Int): Flow<List<AppNotificationCount>> =
+        _eventsFlow.map { list ->
+            list.filter { it.lastUpdatedAt in startTime..endTime }
+                .groupBy { it.packageName to it.appLabel }
+                .map { (k, v) ->
+                    AppNotificationCount(
+                        packageName = k.first,
+                        appLabel = k.second,
+                        totalCount = v.size,
+                        blockedCount = v.count { it.wasBlocked }
+                    )
+                }
+                .sortedByDescending { it.totalCount }
+                .take(limit)
+        }
 
     override suspend fun deleteEventsOlderThan(cutoffTimestamp: Long): Int {
-        val toRemove = events.values.filter { it.lastUpdatedAt < cutoffTimestamp }.map { it.id }
-        toRemove.forEach { events.remove(it) }
+        val toRemove = eventsMap.values.filter { it.lastUpdatedAt < cutoffTimestamp }.map { it.id }
+        toRemove.forEach { eventsMap.remove(it) }
+        notifyChanged()
         return toRemove.size
     }
 
     override suspend fun markEventAsRead(id: Long) {
-        val e = events[id]
-        if (e != null) events[id] = e.copy(isRead = true)
-    }
-
-    override suspend fun markAllEventsAsRead() {
-        events.keys.forEach { id ->
-            val e = events[id]
-            if (e != null) events[id] = e.copy(isRead = true)
+        val e = eventsMap[id]
+        if (e != null) {
+            eventsMap[id] = e.copy(isRead = true)
+            notifyChanged()
         }
     }
 
+    override suspend fun markAllEventsAsRead() {
+        eventsMap.keys.forEach { id ->
+            val e = eventsMap[id]
+            if (e != null) eventsMap[id] = e.copy(isRead = true)
+        }
+        notifyChanged()
+    }
+
     override suspend fun updateBlockReason(id: Long, blockReason: String) {
-        val e = events[id]
-        if (e != null) events[id] = e.copy(blockReason = blockReason)
+        val e = eventsMap[id]
+        if (e != null) {
+            eventsMap[id] = e.copy(blockReason = blockReason)
+            notifyChanged()
+        }
     }
 
     override suspend fun insertUpdate(update: NotificationUpdate): Long {
-        updates.add(update)
-        return updates.size.toLong()
+        val id = if (update.id == 0L) nextUpdateId++ else update.id
+        val saved = update.copy(id = id)
+        updates.add(saved)
+        return id
     }
 
     override fun getUpdatesForEvent(eventId: Long): Flow<List<NotificationUpdate>> =
-        MutableStateFlow(updates.filter { it.eventId == eventId })
+        flowOf(updates.filter { it.eventId == eventId })
 
     override suspend fun getLatestUpdateForEvent(eventId: Long): NotificationUpdate? =
         updates.filter { it.eventId == eventId }.maxByOrNull { it.timestamp }
 
     override suspend fun deleteUpdatesForEvent(eventId: Long) {
-        updates.removeIf { it.eventId == eventId }
+        updates.removeAll { it.eventId == eventId }
     }
 }
 
@@ -143,22 +210,30 @@ class FakeRuleDao : RuleDao {
     val schedules = mutableListOf<Schedule>()
     val categories = mutableMapOf<String, NotificationCategory>()
     val conditions = mutableMapOf<Long, MutableList<RuleCondition>>()
+    private var nextRuleId = 1L
+    private var nextConditionId = 1L
+    private var nextScheduleId = 1L
 
-    override fun getAllRulesFlow(): Flow<List<BlockingRule>> = MutableStateFlow(rules)
-    override suspend fun getAllRulesSync(): List<BlockingRule> = rules
+    override fun getAllRulesFlow(): Flow<List<BlockingRule>> = flowOf(rules)
+    override suspend fun getAllRulesSync(): List<BlockingRule> = rules.toList()
     override suspend fun getRuleById(id: Long): BlockingRule? = rules.find { it.id == id }
     override suspend fun getRuleByType(type: String): BlockingRule? = rules.find { it.ruleType == type }
     override suspend fun insertRule(rule: BlockingRule): Long {
-        rules.add(rule)
-        return rule.id
+        val id = if (rule.id == 0L) nextRuleId++ else rule.id
+        val saved = rule.copy(id = id)
+        rules.removeAll { it.id == id }
+        rules.add(saved)
+        return id
     }
-    override suspend fun insertRules(rules: List<BlockingRule>) { this.rules.addAll(rules) }
+    override suspend fun insertRules(rules: List<BlockingRule>) {
+        rules.forEach { insertRule(it) }
+    }
     override suspend fun updateRule(rule: BlockingRule) {
         val index = rules.indexOfFirst { it.id == rule.id }
         if (index != -1) rules[index] = rule
     }
-    override suspend fun deleteRule(rule: BlockingRule) { rules.removeIf { it.id == rule.id } }
-    override suspend fun deleteRuleById(id: Long) { rules.removeIf { it.id == id } }
+    override suspend fun deleteRule(rule: BlockingRule) { rules.removeAll { it.id == rule.id } }
+    override suspend fun deleteRuleById(id: Long) { rules.removeAll { it.id == id } }
     override suspend fun setRuleEnabled(id: Long, isEnabled: Boolean, updatedAt: Long) {
         val r = rules.find { it.id == id }
         if (r != null) updateRule(r.copy(isEnabled = isEnabled, updatedAt = updatedAt))
@@ -169,35 +244,44 @@ class FakeRuleDao : RuleDao {
     }
     override suspend fun getRulesCount(): Int = rules.size
 
-    override fun getConditionsForRule(ruleId: Long): Flow<List<RuleCondition>> = MutableStateFlow(conditions[ruleId] ?: emptyList())
+    override fun getConditionsForRule(ruleId: Long): Flow<List<RuleCondition>> = flowOf(conditions[ruleId] ?: emptyList())
     override suspend fun getConditionsForRuleSync(ruleId: Long): List<RuleCondition> = conditions[ruleId] ?: emptyList()
     override suspend fun insertCondition(condition: RuleCondition): Long {
-        conditions.getOrPut(condition.ruleId) { mutableListOf() }.add(condition)
-        return condition.id
+        val id = if (condition.id == 0L) nextConditionId++ else condition.id
+        val saved = condition.copy(id = id)
+        conditions.getOrPut(condition.ruleId) { mutableListOf() }.add(saved)
+        return id
     }
     override suspend fun insertConditions(conditions: List<RuleCondition>) {
         conditions.forEach { insertCondition(it) }
     }
     override suspend fun deleteCondition(id: Long) {
-        this.conditions.values.forEach { it.removeIf { c -> c.id == id } }
+        this.conditions.values.forEach { it.removeAll { c -> c.id == id } }
     }
     override suspend fun deleteConditionsForRule(ruleId: Long) { this.conditions.remove(ruleId) }
 
-    override fun getAllWhitelistedApps(): Flow<List<WhitelistedApp>> = MutableStateFlow(whitelistedApps.values.toList())
+    override fun getAllWhitelistedApps(): Flow<List<WhitelistedApp>> = flowOf(whitelistedApps.values.toList())
     override suspend fun getAllWhitelistedAppsSync(): List<WhitelistedApp> = whitelistedApps.values.toList()
     override suspend fun isAppWhitelisted(packageName: String): Boolean = whitelistedApps.containsKey(packageName)
     override suspend fun insertWhitelistedApp(app: WhitelistedApp) { whitelistedApps[app.packageName] = app }
     override suspend fun deleteWhitelistedApp(packageName: String) { whitelistedApps.remove(packageName) }
-    override fun getWhitelistedAppsCount(): Flow<Int> = MutableStateFlow(whitelistedApps.size)
+    override fun getWhitelistedAppsCount(): Flow<Int> = flowOf(whitelistedApps.size)
 
-    override fun getAllWhitelistedKeywords(): Flow<List<WhitelistedKeyword>> = MutableStateFlow(whitelistedKeywords)
-    override suspend fun getAllWhitelistedKeywordsSync(): List<WhitelistedKeyword> = whitelistedKeywords
-    override suspend fun insertWhitelistedKeyword(keyword: WhitelistedKeyword) { whitelistedKeywords.add(keyword) }
-    override suspend fun insertWhitelistedKeywords(keywords: List<WhitelistedKeyword>) { whitelistedKeywords.addAll(keywords) }
-    override suspend fun deleteWhitelistedKeyword(keyword: String) { whitelistedKeywords.removeIf { it.keyword == keyword } }
-    override fun getWhitelistedKeywordsCount(): Flow<Int> = MutableStateFlow(whitelistedKeywords.size)
+    override fun getAllWhitelistedKeywords(): Flow<List<WhitelistedKeyword>> = flowOf(whitelistedKeywords.toList())
+    override suspend fun getAllWhitelistedKeywordsSync(): List<WhitelistedKeyword> = whitelistedKeywords.toList()
+    override suspend fun insertWhitelistedKeyword(keyword: WhitelistedKeyword) {
+        whitelistedKeywords.removeAll { it.keyword.equals(keyword.keyword, ignoreCase = true) }
+        whitelistedKeywords.add(keyword)
+    }
+    override suspend fun insertWhitelistedKeywords(keywords: List<WhitelistedKeyword>) {
+        keywords.forEach { insertWhitelistedKeyword(it) }
+    }
+    override suspend fun deleteWhitelistedKeyword(keyword: String) {
+        whitelistedKeywords.removeAll { it.keyword.equals(keyword, ignoreCase = true) }
+    }
+    override fun getWhitelistedKeywordsCount(): Flow<Int> = flowOf(whitelistedKeywords.size)
 
-    override fun getAllBlockedApps(): Flow<List<BlockedApp>> = MutableStateFlow(blockedApps.values.toList())
+    override fun getAllBlockedApps(): Flow<List<BlockedApp>> = flowOf(blockedApps.values.toList())
     override suspend fun getAllBlockedAppsSync(): List<BlockedApp> = blockedApps.values.toList()
     override suspend fun getBlockedApp(packageName: String): BlockedApp? = blockedApps[packageName]
     override suspend fun isAppBlocked(packageName: String): Boolean = blockedApps[packageName]?.isBlocked == true
@@ -209,27 +293,30 @@ class FakeRuleDao : RuleDao {
         val app = blockedApps[packageName]
         if (app != null) blockedApps[packageName] = app.copy(isBlocked = isBlocked, updatedAt = updatedAt)
     }
-    override fun getBlockedAppsCount(): Flow<Int> = MutableStateFlow(blockedApps.values.count { it.isBlocked })
+    override fun getBlockedAppsCount(): Flow<Int> = flowOf(blockedApps.values.count { it.isBlocked })
 
-    override fun getAllSchedules(): Flow<List<Schedule>> = MutableStateFlow(schedules)
-    override suspend fun getAllSchedulesSync(): List<Schedule> = schedules
+    override fun getAllSchedules(): Flow<List<Schedule>> = flowOf(schedules.toList())
+    override suspend fun getAllSchedulesSync(): List<Schedule> = schedules.toList()
     override suspend fun getScheduleById(id: Long): Schedule? = schedules.find { it.id == id }
     override suspend fun insertSchedule(schedule: Schedule): Long {
-        schedules.add(schedule)
-        return schedule.id
+        val id = if (schedule.id == 0L) nextScheduleId++ else schedule.id
+        val saved = schedule.copy(id = id)
+        schedules.removeAll { it.id == id }
+        schedules.add(saved)
+        return id
     }
     override suspend fun updateSchedule(schedule: Schedule) {
         val i = schedules.indexOfFirst { it.id == schedule.id }
         if (i != -1) schedules[i] = schedule
     }
-    override suspend fun deleteSchedule(id: Long) { schedules.removeIf { it.id == id } }
+    override suspend fun deleteSchedule(id: Long) { schedules.removeAll { it.id == id } }
     override suspend fun setScheduleEnabled(id: Long, isEnabled: Boolean) {
         val s = schedules.find { it.id == id }
         if (s != null) updateSchedule(s.copy(isEnabled = isEnabled))
     }
-    override fun getActiveSchedulesCount(): Flow<Int> = MutableStateFlow(schedules.count { it.isEnabled })
+    override fun getActiveSchedulesCount(): Flow<Int> = flowOf(schedules.count { it.isEnabled })
 
-    override fun getAllCategories(): Flow<List<NotificationCategory>> = MutableStateFlow(categories.values.toList())
+    override fun getAllCategories(): Flow<List<NotificationCategory>> = flowOf(categories.values.toList())
     override suspend fun getAllCategoriesSync(): List<NotificationCategory> = categories.values.toList()
     override suspend fun getCategory(categoryId: String): NotificationCategory? = categories[categoryId]
     override suspend fun insertCategory(category: NotificationCategory) { categories[category.categoryId] = category }
